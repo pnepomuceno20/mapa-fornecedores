@@ -3,102 +3,539 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex, nofollow">
-<title>Mapa de Fornecedores</title>
+<title>Mapa de Fornecedores e CDs</title>
+<!-- Visual inspirado no guia DESIGN.md "Uber" (coleção awesome-design-md, MIT): pílulas, cartões de 16 px, campos cinza,
+     em tom claro (pedido do gestor em 14/10/2026: o preto chamava atenção demais). Sem logotipo nem fonte proprietária. Fonte do sistema (Segoe UI no Windows; Inter se instalada): nenhuma fonte baixada
+     de terceiros, para não somar mais um serviço externo aos que o mapa já usa. -->
+<!-- Leaflet 1.9.4: do cdnjs no mapa local; do próprio site (vendor/leaflet) na versão publicada -->
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<script src="vendor/leaflet/leaflet.js"></script>
 <style>
+  /* tom claro: branco e cinzas suaves, texto grafite, um único azul para ação e seleção; fornecedores em verde (como no mapa atual) */
   :root {
-    --ink: #1f2328; --body: #5e6470; --line: #e6e8eb; --soft: #f2f4f6; --accent: #2563eb; --accent-hover: #1d4ed8;
+    --ink: #1f2328; --body: #5e6470; --mute: #9aa0a8; --line: #e6e8eb; --soft: #f2f4f6; --softer: #f8f9fa; --canvas: #ffffff;
+    --accent: #2563eb; --accent-hover: #1d4ed8; --accent-soft: #e8effd; --accent-line: #c7d7fb; --accent-ink: #1d4ed8;
+    --forn: #1a9850; --cd: #475569;
+    --sh2: 0 4px 16px rgba(0, 0, 0, .10); --sh3: 0 2px 8px rgba(0, 0, 0, .12);
     --font: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px;
-    font: 400 15px/22px var(--font); color: var(--ink); background: var(--soft); }
-  .card { width: 100%; max-width: 420px; background: #fff; border-radius: 16px; box-shadow: 0 4px 16px rgba(0, 0, 0, .10); padding: 28px 24px; }
-  h1 { font: 700 20px/28px var(--font); margin: 0; }
-  .sub { color: var(--body); font-size: 13px; margin: 4px 0 20px; }
-  .btn { display: block; width: 100%; border: 0; border-radius: 999px; padding: 13px 20px; font: 500 16px/20px var(--font); cursor: pointer; }
-  .btn-primary { background: var(--accent); color: #fff; }
+  html, body { height: 100%; margin: 0; }
+  body { font: 400 14px/20px var(--font); color: var(--ink); background: var(--soft); }
+  #map { position: fixed; inset: 0; }
+
+  /* painel = cartão flutuante sobre o mapa, do tamanho do conteúdo; se passar da altura da tela, o cartão inteiro rola
+     (uma barra de rolagem só; o cabeçalho da lista fica preso no topo) */
+  #side { position: fixed; top: 16px; left: 16px; width: 400px; max-width: calc(100% - 32px); max-height: calc(100% - 32px); z-index: 1000;
+    background: var(--canvas); border-radius: 16px; box-shadow: var(--sh2); overflow-x: hidden; overflow-y: auto;
+    scrollbar-width: thin; scrollbar-color: #c9ced6 transparent; }
+  header { padding: 16px 20px 12px; border-bottom: 1px solid var(--line); }
+  h1 { font: 700 18px/24px var(--font); margin: 0; }
+  .sub { font-size: 12px; line-height: 16px; color: var(--body); margin-top: 2px; }
+  .box { padding: 12px 20px 0; }
+  .lbl { display: block; font: 500 12px/16px var(--font); color: var(--body); margin: 0 0 6px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+  /* campos: cinza suave, sem borda; contorno azul ao digitar */
+  .field { display: flex; align-items: center; gap: 10px; background: var(--soft); border-radius: 8px; padding: 0 12px; height: 44px; flex: 1; min-width: 0; }
+  .field input { flex: 1; min-width: 0; border: 0; background: transparent; outline: none; font: 400 15px/20px var(--font); color: var(--ink); }
+  .field input::placeholder { color: #8a9099; }
+  .field:focus-within { box-shadow: inset 0 0 0 2px var(--accent); background: var(--canvas); }
+  .field .ic { display: flex; flex: none; color: var(--body); }
+  .field .suf { font: 500 14px/16px var(--font); color: var(--body); }
+  .field.raio { flex: none; width: 150px; }
+  #raio { text-align: right; width: 40px; -moz-appearance: textfield; }
+  #raio::-webkit-outer-spin-button, #raio::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .pin { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-line); }
+
+  /* botões em pílula: azul cheio só na ação principal (Buscar) */
+  .btn { font: 500 16px/20px var(--font); border: 0; border-radius: 999px; padding: 12px 22px; cursor: pointer; }
+  .btn-primary { background: var(--accent); color: #fff; flex: 1; }
   .btn-primary:hover { background: var(--accent-hover); }
-  .btn-subtle { background: var(--soft); color: var(--ink); margin-top: 16px; }
+  .btn-subtle { background: var(--soft); color: var(--ink); font-size: 14px; padding: 10px 16px; }
   .btn-subtle:hover { background: var(--line); }
-  .ok { background: #e7f6ee; color: #146c43; border-radius: 12px; padding: 12px 14px; margin-bottom: 8px; font-weight: 500; }
-  .err { background: #fdecec; color: #b42318; border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; }
-  .m { color: var(--body); font-size: 13px; line-height: 19px; }
-  dl { margin: 0 0 12px; }
-  dt { color: var(--body); font-size: 12px; margin-top: 12px; }
-  dd { margin: 0; font-weight: 500; word-break: break-word; }
+  button:disabled { opacity: .45; cursor: default; }
+  .opcao { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; color: var(--body); cursor: pointer; }
+  .opcao input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+  #msg { font-size: 13px; line-height: 18px; margin-top: 8px; color: var(--body); }
+  #msg:empty { display: none; }
+  #msg.err { color: #b42318; font-weight: 500; }
+  #msg.err::before { content: "⚠ "; }
+  #cands div { padding: 10px 12px; border-radius: 8px; background: var(--softer); border: 1px solid var(--line); margin-top: 6px; cursor: pointer; font-size: 13px; line-height: 18px; }
+  #cands div:hover { background: var(--accent-soft); border-color: var(--accent-line); }
+
+  /* filtros em pílulas; a selecionada fica azul-clara */
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; }
+  #filtros label, .svc button { display: inline-flex; align-items: center; gap: 8px; padding: 8px 13px; border-radius: 999px; border: 0;
+    background: var(--soft); color: var(--body); font: 500 13px/16px var(--font); cursor: pointer; user-select: none; }
+  #filtros label:hover, .svc button:hover { background: var(--line); color: var(--ink); }
+  #filtros input { position: absolute; opacity: 0; pointer-events: none; }
+  #filtros label:has(input:checked), .svc button.on { background: var(--accent-soft); color: var(--accent-ink); box-shadow: inset 0 0 0 1px var(--accent-line); }
+  #filtros label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* legenda com a mesma forma e cor dos marcadores do mapa (apagada quando a camada está desligada) */
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--forn); display: inline-block; flex: none; }
+  .sq { width: 10px; height: 10px; border: 2px solid var(--cd); background: #fff; display: inline-block; transform: rotate(45deg); flex: none; }
+  #filtros label:not(:has(input:checked)) :is(.dot, .sq) { opacity: .4; }
+  select#tipo { appearance: none; -webkit-appearance: none; width: 100%; height: 40px; border: 0; border-radius: 8px; padding: 0 40px 0 12px;
+    font: 500 14px/16px var(--font); color: var(--ink); cursor: pointer;
+    background: var(--soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%235e6470' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 14px center; }
+
+  /* lista de resultados */
+  #res { border-top: 1px solid var(--line); margin-top: 12px; }
+  .sec-h { position: sticky; top: 0; z-index: 1; background: var(--canvas); padding: 10px 20px 8px; border-bottom: 1px solid var(--line);
+    font: 500 12px/16px var(--font); color: var(--body); text-transform: uppercase; display: flex; justify-content: space-between; gap: 12px; }
+  .sec-h.fora { background: #fff8e6; color: #7a4b00; text-transform: none; font-size: 13px; }
+  .item { padding: 12px 20px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .item:hover { background: var(--softer); }
+  .item .t { display: flex; justify-content: space-between; gap: 12px; font: 500 15px/20px var(--font); }
+  .item .d { font-weight: 700; white-space: nowrap; }
+  .item .m { font-size: 13px; line-height: 18px; color: var(--body); margin-top: 3px; }
+  /* etiquetas em tons claros: azul = mais próximo, âmbar = posição aproximada, vermelho = CNPJ não ativo, verde = CD validado */
+  .tag { display: inline-block; font: 500 11px/16px var(--font); padding: 2px 8px; border-radius: 999px; background: var(--soft); color: var(--body); margin: 0 6px 2px 0; }
+  .tag-acc { background: var(--accent-soft); color: var(--accent-ink); }
+  .tag-aviso { background: #fff3db; color: #8a5300; }
+  .tag-alerta { background: #fdecec; color: #b42318; }
+  .tag-ok { background: #e7f6ee; color: #146c43; }
+  .acts { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .act { display: inline-flex; align-items: center; gap: 6px; font: 500 13px/16px var(--font); padding: 7px 13px; border-radius: 999px;
+    background: var(--soft); color: var(--ink); text-decoration: none; }
+  .act:hover { background: var(--line); }
+  .act.primary { background: var(--accent-soft); color: var(--accent-ink); }
+  .act.primary:hover { background: #dbe6fc; }
+  .act.off { color: var(--mute); background: var(--softer); }
+  .empty { margin: 16px 20px; padding: 18px 20px; background: var(--softer); border-radius: 16px; color: var(--body); font-size: 14px; line-height: 20px; }
+
+  /* popups e controles do mapa */
+  .leaflet-container { font-family: var(--font); background: #eef0f2; }
+  .leaflet-popup-content-wrapper { border-radius: 16px; box-shadow: var(--sh2); }
+  .leaflet-popup-content { margin: 16px 18px; font: 400 14px/20px var(--font); color: var(--ink); }
+  .leaflet-popup-tip { box-shadow: none; }
+  .pop h3 { font: 700 16px/22px var(--font); margin: 0 0 4px; }
+  .pop p { margin: 4px 0; }
+  .pop .m { color: var(--body); font-size: 13px; line-height: 18px; }
+  .leaflet-popup-content hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
+  .leaflet-container a { color: var(--accent-ink); }
+  .leaflet-container a.act { color: var(--ink); }
+  .leaflet-container a.act.primary { color: var(--accent-ink); }
+  .leaflet-bar { border: 0 !important; box-shadow: var(--sh3) !important; border-radius: 999px !important; overflow: hidden; }
+  .leaflet-bar a { width: 40px !important; height: 40px !important; line-height: 40px !important; color: var(--ink) !important; font-weight: 500; }
+  .leaflet-control-layers { border: 0 !important; border-radius: 16px !important; box-shadow: var(--sh2) !important; font: 500 13px/20px var(--font); }
+  .leaflet-control-layers-expanded { padding: 10px 14px; }
+
+  /* marcadores: verde = fornecedor, losango branco = CD, azul com halo = veículo */
+  .cd-ico { width: 14px; height: 14px; background: #fff; border: 2px solid var(--cd); border-radius: 2px; transform: rotate(45deg); box-shadow: 0 1px 4px rgba(0, 0, 0, .25); }
+  .cd-ico.aprox { border-color: #a0a7b1; }
+  .grp-ico { width: 24px; height: 24px; border-radius: 50%; background: var(--forn); color: #fff; border: 2px solid #fff;
+    font: 700 11px/20px var(--font); text-align: center; box-shadow: 0 1px 4px rgba(0, 0, 0, .25); cursor: pointer; }
+  .veh-ico { width: 34px; height: 34px; border-radius: 50%; background: var(--accent); border: 3px solid #fff; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 8px rgba(37, 99, 235, .18), 0 2px 8px rgba(0, 0, 0, .2); }
+
+  /* celular: o painel vira gaveta na parte de baixo (rola inteira), mapa em tela cheia acima dela */
+  @media (max-width: 760px) {
+    #side { top: auto; left: 0; right: 0; bottom: 0; width: 100%; max-width: none; height: 58vh; max-height: none; border-radius: 16px 16px 0 0; }
+    .leaflet-bottom { bottom: 58vh; }   /* zoom e créditos do mapa acima da gaveta */
+    header { padding: 14px 16px 10px; }
+    .box { padding: 12px 16px 0; }
+    .item, .sec-h { padding-left: 16px; padding-right: 16px; }
+  }
 </style>
 </head>
 <body>
-<main class="card">
-  <h1>Mapa de Fornecedores</h1>
-  <p class="sub">Acesso com a conta Microsoft da Transmaroni</p>
-  <div id="conteudo"><p class="m">Verificando acesso…</p></div>
-</main>
-<script src="vendor/msal-browser.min.js"></script>
+<div id="map"></div>
+<div id="side">
+  <header>
+    <h1>Fornecedores próximos ao veículo</h1>
+    <div class="sub">CDs Mercado Livre + fornecedores · dados de <span id="gerado">…</span></div>
+  </header>
+  <div class="box">
+    <label class="lbl" for="q">Onde está o veículo?</label>
+    <div class="field">
+      <span class="ic"><span class="pin"></span></span>
+      <input id="q" type="text" placeholder="-23.55, -46.63 · link do Google Maps · endereço">
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label class="field raio" for="raio"><span class="suf">Raio</span><input id="raio" type="number" min="1" max="1000" value="50"><span class="suf">km</span></label>
+      <button id="btnBuscar" class="btn btn-primary">Buscar</button>
+    </div>
+    <label class="opcao"><input type="checkbox" id="clickSet" checked> Clique no mapa define o veículo</label>
+    <div id="msg"></div>
+    <div id="cands"></div>
+  </div>
+  <div class="box row">
+    <span class="lbl" style="margin:0 4px 0 0">Mostrar</span>
+    <div class="pills" id="filtros">
+      <label><input type="checkbox" data-f="CD" checked><span class="sq"></span> CDs</label>
+      <label><input type="checkbox" data-f="F" checked><span class="dot"></span> Fornecedores</label>
+    </div>
+  </div>
+  <div class="box">
+    <span class="lbl">Serviço</span>
+    <div class="pills svc" id="svc">
+      <button type="button" data-t="" class="on">Todos</button>
+      <button type="button" data-t="Mecânica / oficina">Mecânica</button>
+      <button type="button" data-t="Pneus / borracharia / alinhamento">Pneus</button>
+      <button type="button" data-t="Guincho / reboque">Guincho</button>
+      <button type="button" data-t="Elétrica automotiva">Elétrica</button>
+      <button type="button" data-t="Peças / acessórios">Peças</button>
+      <button type="button" data-t="Combustível / lubrificantes">Combustível</button>
+    </div>
+    <div style="margin-top:8px"><select id="tipo" title="Tipo de serviço"></select></div>
+    <div class="row" style="margin-top:8px">
+      <div class="field" style="height:40px">
+        <span class="ic"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></span>
+        <input id="filtroNome" type="text" placeholder="Buscar por nome, código ou cidade">
+      </div>
+      <button class="btn btn-subtle" id="btnCsv" disabled title="Baixar a lista atual em CSV">CSV</button>
+    </div>
+  </div>
+  <div id="res"><div class="empty">Informe a localização do veículo (ou clique no mapa) para listar CDs e fornecedores no raio, ou digite um nome, código ou cidade para buscar na base toda.</div></div>
+</div>
+
 <script>
-// Etapa 1 da publicação: só o login com a conta Microsoft da empresa. Nenhum dado de fornecedor fica nesta página.
-// Registro no Entra ID: "Mapa de Fornecedores - Manutenção", locatário único Transmaroni (IDs públicos, não são senha).
-// MSAL 5: a resposta da Microsoft chega em redirect.html (ponte servida por este mesmo site) e volta para cá.
-const PASTA = location.origin + location.pathname.replace(/[^/]*$/, '');
-const pca = new msal.PublicClientApplication({
-  auth: {
-    clientId: 'be92c8b6-d0fc-40e3-8e5c-f75de940e41b',
-    authority: 'https://login.microsoftonline.com/8babaf2b-248f-4651-98d6-1e5312fbe00a',
-    redirectUri: PASTA + 'redirect.html',
-    postLogoutRedirectUri: PASTA + 'redirect.html'
-  },
-  cache: { cacheLocation: 'localStorage' }   // continua conectado ao reabrir o site no celular
-});
-const ESCOPOS = ['User.Read'];
-const $ = id => document.getElementById(id);
+// Dados: embutidos no mapa local (duplo clique) ou baixados do SharePoint depois do login no site publicado (iniciarMapa, no fim)
+let CDS = [], FORN = [];
+
+const naoAtivo = f => f.sc && f.sc !== 'ATIVA' && !/^NÃO VERIFICADO/.test(f.sc);
+const TXT_APROX = { 'cidade': 'ponto no centro da cidade', 'rodovia': 'ponto no trecho da rodovia dentro do município', 'rua do CEP': 'ponto pela rua indicada no CEP' };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-// o MSAL 5 devolve só o código do erro; aqui ele vira uma mensagem para a pessoa
-const ERROS = {
-  consent_required: 'O acesso precisa ser aprovado por um administrador da Transmaroni no Azure.',
-  interaction_required: 'É preciso entrar de novo.',
-  login_required: 'Sua sessão expirou. Entre de novo.',
-  access_denied: 'O login foi cancelado ou não foi autorizado.'
+const fmtKm = d => d.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' km';
+const $ = id => document.getElementById(id);
+const corCss = nome => getComputedStyle(document.documentElement).getPropertyValue(nome).trim();
+const COR_FORN = corCss('--forn'), COR_ACAO = corCss('--accent');   // mesmas cores do CSS (fornecedores e veículo/raio)
+const IC_TEL = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25c1.1.37 2.3.57 3.6.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.6a1 1 0 0 1-.25 1z"/></svg>';
+const IC_ROTA = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2 4.5 20.3l.7.7L12 18l6.8 3 .7-.7z"/></svg>';
+const IC_CAMINHAO = '<svg viewBox="0 0 24 24" width="18" height="18" fill="#fff"><path d="M2 6h12v9H2zM14 9h4l3.5 3.5V15H14z"/><circle cx="6" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>';
+
+function distKm(a, b, c, d) {
+  const R = 6371, r = Math.PI / 180, dLat = (c - a) * r, dLon = (d - b) * r;
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(a * r) * Math.cos(c * r) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+const noBrasil = (la, lo) => la >= -34.5 && la <= 6 && lo >= -74.5 && lo <= -28;
+
+// ---------- mapa (tela cheia; o painel flutua por cima) ----------
+const desktop = () => window.innerWidth > 760;
+// área livre do mapa: à direita do painel (computador) ou acima da gaveta (celular)
+const padMapa = () => desktop() ? { paddingTopLeft: [450, 40], paddingBottomRight: [40, 40] } : { paddingTopLeft: [20, 20], paddingBottomRight: [20, Math.round(window.innerHeight * .6)] };
+// desloca o centro para o meio da área livre (o painel cobre a esquerda no computador e a parte de baixo no celular)
+const compensarPainel = () => map.panBy(desktop() ? [-216, 0] : [0, Math.round(window.innerHeight * .29)], { animate: false });
+function focar(la, lo, z) {
+  map.setView([la, lo], z, { animate: false });
+  compensarPainel();
+}
+const map = L.map('map', { preferCanvas: true, zoomControl: false }).setView([-15.8, -47.9], desktop() ? 4 : 3);
+compensarPainel();
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+// Fundo: Esri (OpenStreetMap e CARTO bloqueiam páginas abertas direto do disco; Esri funciona sem chave)
+const esri = (servico, rotulo, nativo) => L.tileLayer(`https://server.arcgisonline.com/ArcGIS/rest/services/${servico}/MapServer/tile/{z}/{y}/{x}`,
+  { maxZoom: 19, maxNativeZoom: nativo, attribution: `Fundo: Esri ${rotulo} &mdash; Esri, HERE, Garmin, OpenStreetMap e colaboradores` });
+const fundos = {
+  'Mapa claro': L.layerGroup([esri('Canvas/World_Light_Gray_Base', 'Light Gray Canvas', 16), esri('Canvas/World_Light_Gray_Reference', 'Light Gray Canvas', 16)]),
+  'Ruas': esri('World_Street_Map', 'World Street Map', 18),
+  'Satélite': esri('World_Imagery', 'World Imagery', 19)
 };
+fundos['Mapa claro'].addTo(map);
+L.control.layers(fundos, null, { position: 'topright' }).addTo(map);
 
-function telaEntrar(aviso) {
-  $('conteudo').innerHTML = (aviso ? `<div class="err">${esc(aviso)}</div>` : '') +
-    '<button class="btn btn-primary" id="entrar">Entrar com a conta Microsoft</button>' +
-    '<p class="m" style="margin-top:14px">Use o mesmo e-mail e senha do Outlook. A senha é digitada na página da Microsoft: este site não a vê nem guarda.</p>';
-  $('entrar').onclick = () => pca.loginRedirect({ scopes: ESCOPOS });
+const camadaForn = L.layerGroup().addTo(map);
+const camadaCd = L.layerGroup().addTo(map);
+const renderer = L.canvas({ padding: 0.5 });
+let veiculo = null, circulo = null, ultimo = [];
+
+function linkMaps(la, lo) { return `https://www.google.com/maps/search/?api=1&query=${la},${lo}`; }
+function linkRota(la, lo) { return veiculo ? `https://www.google.com/maps/dir/?api=1&origin=${veiculo.lat},${veiculo.lng}&destination=${la},${lo}` : null; }
+function linksHtml(la, lo, tel) {
+  const r = linkRota(la, lo);
+  return `<div class="acts">` +
+    (tel ? `<a class="act primary" href="tel:${esc(tel.replace(/\D/g, ''))}">${IC_TEL} Ligar</a>` : '') +
+    (r ? `<a class="act" href="${r}" target="_blank" rel="noopener">${IC_ROTA} Rota</a>` : '') +
+    `<a class="act" href="${linkMaps(la, lo)}" target="_blank" rel="noopener">Google Maps</a></div>`;
+}
+function popForn(f) {
+  const nome = f.n || f.rz;
+  return `<div class="pop"><h3>${esc(nome)}</h3>
+    ${f.rz && f.rz !== nome ? `<p class="m">${esc(f.rz)}</p>` : ''}
+    <p class="m">Cód. ${esc(f.c)}</p>
+    ${naoAtivo(f) ? `<p><span class="tag tag-alerta">CNPJ ${esc(f.sc)}</span><span class="m">na Receita Federal</span></p>` : ''}
+    ${f.ap ? `<p><span class="tag tag-aviso">Posição aproximada</span><span class="m">${esc(TXT_APROX[f.pz] || 'ponto aproximado')}; confirme o endereço por telefone</span></p>` : ''}
+    <p><b>Serviço:</b> ${esc(f.ts)}${f.ft && !f.ts.includes(f.ft) ? ` <span class="m">(${esc(f.ft)})</span>` : ''}${f.cn ? `<br><span class="m">CNAE: ${esc(f.cn)}</span>` : ''}</p>
+    <p>${esc(f.e)}<br>${esc(f.ci)}/${esc(f.uf)} · CEP ${esc(f.cep)}</p>
+    ${f.t ? `<p class="m">Tel.: ${esc(f.t)}${f.tf ? ' (telefone da Receita Federal)' : ''}</p>` : '<p class="m">Sem telefone</p>'}
+    ${f.er ? `<p class="m">Localização pelo endereço fiscal (Receita Federal): ${esc(f.er)}</p>` : ''}
+    ${linksHtml(f.la, f.lo, f.t)}</div>`;
+}
+function popCd(c) {
+  return `<div class="pop"><h3>CD ${esc(c.s)} · ${esc(c.n)}</h3>
+    <p class="m">${esc([c.r, c.mi].filter(Boolean).join(' / '))}${c.dm ? ' · ' + esc(c.dm) : ''}</p>
+    <p>${esc(c.e)}</p>
+    ${c.pf ? `<p><b>Restrição de veículo:</b> ${esc(c.pf)}${c.mr && c.mr !== '-' ? ' — ' + esc(c.mr) : ''}</p>` : ''}
+    ${c.ap ? `<p><b>Acesso:</b> ${esc(c.ap)}</p>` : ''}
+    ${c.bp ? `<p><b>Bipagem YMS:</b> ${esc(c.bp)}</p>` : ''}
+    <p><span class="tag ${c.st === 'OK' ? 'tag-ok' : 'tag-aviso'}">${esc(c.st)}</span><span class="m">${esc(c.m)}</span></p>
+    ${c.lk ? `<p><a href="${esc(c.lk)}" target="_blank" rel="noopener">Localização fixa (planilha)</a></p>` : ''}
+    ${linksHtml(c.la, c.lo, '')}</div>`;
 }
 
-async function iniciar() {
-  try {
-    await pca.initialize();
-    const r = await pca.handleRedirectPromise();
-    const conta = r?.account || pca.getActiveAccount() || pca.getAllAccounts()[0];
-    if (!conta) return telaEntrar();
-    pca.setActiveAccount(conta);
-    let perfil = null;
-    try {
-      const t = await pca.acquireTokenSilent({ scopes: ESCOPOS, account: conta });
-      const resp = await fetch('https://graph.microsoft.com/v1.0/me?$select=displayName,userPrincipalName,userType',
-        { headers: { Authorization: 'Bearer ' + t.accessToken } });
-      if (resp.ok) perfil = await resp.json();
-    } catch (e) {
-      if (e.errorCode === 'interaction_required' || e.errorCode === 'login_required') return telaEntrar(ERROS[e.errorCode]);
-      throw e;
-    }
-    const tipo = perfil?.userType === 'Guest' ? 'Convidado (externo)' : perfil?.userType === 'Member' ? 'Colaborador' : 'não informado';
-    $('conteudo').innerHTML = `<div class="ok">Login funcionando</div>
-      <dl><dt>Nome</dt><dd>${esc(perfil?.displayName || conta.name)}</dd>
-      <dt>E-mail</dt><dd>${esc(perfil?.userPrincipalName || conta.username)}</dd>
-      <dt>Tipo de conta</dt><dd>${esc(tipo)}</dd></dl>
-      <p class="m">Primeira etapa concluída. O mapa com os fornecedores entra nesta página quando a pasta de dados no SharePoint estiver pronta.</p>
-      <button class="btn btn-subtle" id="sair">Sair deste site</button>`;
-    // sai só deste site (apaga a sessão guardada aqui), sem desconectar o Outlook e os outros aplicativos da Microsoft
-    $('sair').onclick = async () => { await pca.clearCache({ account: conta }); location.reload(); };
-  } catch (e) {
-    telaEntrar((ERROS[e.errorCode] || 'Não foi possível entrar.') + (e.errorCode ? ` (código: ${e.errorCode})` : ''));
+// Várias siglas no mesmo endereço (mesmo galpão) viram um único marcador, com todas no popup (montados em iniciarMapa)
+const gruposCd = new Map();
+
+// Fornecedores unificados (decisão do gestor em 09/10/2026): todos os serviços e situações do CNPJ entram; o filtro
+// é só pelo tipo de serviço. Os botões de serviço são atalhos do mesmo seletor.
+const NAO_FROTA = ['Órgãos públicos', 'Manutenção predial / construção', 'Informática / tecnologia', 'Serviços administrativos / profissionais', 'Hotel / alimentação', 'Transporte / logística'];
+function montarTipos() {
+  const atual = $('tipo').value, cont = {}; let n = 0;
+  FORN.forEach(f => { cont[f.ts] = (cont[f.ts] || 0) + 1; n++; });
+  // serviços de frota primeiro; grupos não automotivos depois; "Outros", "Não classificado" e "Pessoa física" no fim
+  const grupo = t => /^(Outros|Não classificado|Pessoa física)/.test(t) ? 2 : NAO_FROTA.includes(t) ? 1 : 0;
+  const ordem = Object.keys(cont).sort((a, b) => (grupo(a) - grupo(b)) || a.localeCompare(b, 'pt-BR'));
+  $('tipo').innerHTML = `<option value="">Todos os serviços (${n})</option>` + ordem.map(t => `<option value="${esc(t)}">${esc(t)} (${cont[t]})</option>`).join('');
+  $('tipo').value = cont[atual] ? atual : '';
+  sincronizarBotoes();
+}
+function sincronizarBotoes() {
+  document.querySelectorAll('#svc button').forEach(b => b.classList.toggle('on', b.dataset.t === $('tipo').value));
+}
+
+function filtrosAtivos() {
+  const s = new Set();
+  document.querySelectorAll('#filtros input').forEach(i => { if (i.checked) s.add(i.dataset.f); });
+  return s;
+}
+function passaForn(x, f) {
+  const tipo = $('tipo').value;
+  return f.has('F') && (!tipo || x.ts === tipo);
+}
+// Fornecedores na mesma coordenada (ex.: vários no centro da cidade quando a posição é aproximada, ou filiais no
+// mesmo prédio) viram um único marcador numerado com a lista no popup; o agrupamento respeita os filtros ativos.
+const grupoMk = new Map();
+const chavePonto = x => x.la.toFixed(5) + ',' + x.lo.toFixed(5);
+function popGrupo(g) {
+  return `<div class="pop m" style="margin-bottom:6px">${g.length} fornecedores no mesmo ponto do mapa</div>` + g.map(popForn).join('<hr>');
+}
+function desenharCamadas() {
+  const f = filtrosAtivos();
+  camadaForn.clearLayers(); camadaCd.clearLayers();
+  const grupos = new Map();
+  FORN.forEach(x => { x.grp = null; if (passaForn(x, f)) { const k = chavePonto(x); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(x); } });
+  grupos.forEach((g, k) => {
+    if (g.length === 1) { camadaForn.addLayer(g[0].mk); return; }
+    let mk = grupoMk.get(k);
+    if (!mk) { mk = L.marker([g[0].la, g[0].lo], { zIndexOffset: 200 }); grupoMk.set(k, mk); }
+    mk.setIcon(L.divIcon({ className: '', html: `<div class="grp-ico" title="${g.length} fornecedores neste ponto">${g.length}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] }));
+    mk.unbindPopup().bindPopup(() => popGrupo(g), { maxWidth: 340, maxHeight: 380 });
+    g.forEach(x => x.grp = mk);
+    camadaForn.addLayer(mk);
+  });
+  if (f.has('CD')) gruposCd.forEach(g => camadaCd.addLayer(g[0].mk));
+}
+
+// ---------- posição do veículo ----------
+function msg(t, erro) { $('msg').textContent = t || ''; $('msg').className = erro ? 'err' : ''; }
+
+function coordsDeUrl(u) {
+  let s; try { s = decodeURIComponent(u.replace(/\+/g, ' ')); } catch (e) { s = u; }
+  const tenta = [];
+  const all = [...s.matchAll(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/g)];
+  if (all.length) tenta.push(all[all.length - 1]);
+  [/\/(?:place|search)\/\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/, /[?&](?:q|query|ll|destination|center)=[^&\d-]*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/, /@(-?\d+\.\d+),(-?\d+\.\d+)/]
+    .forEach(re => { const m = s.match(re); if (m) tenta.push(m); });
+  for (const m of tenta) { const la = +m[1], lo = +m[2]; if (noBrasil(la, lo)) return [la, lo]; }
+  return null;
+}
+function coordsDeTexto(t) {
+  let m = t.match(/^\s*(-?\d{1,2}\.\d+)\s*[,; ]\s*(-?\d{1,3}\.\d+)\s*$/);           // -23.55, -46.63
+  if (!m) m = t.match(/^\s*(-?\d{1,2},\d+)\s*[; ]\s*(-?\d{1,3},\d+)\s*$/);            // -23,55; -46,63
+  if (!m) return null;
+  const la = +m[1].replace(',', '.'), lo = +m[2].replace(',', '.');
+  if (noBrasil(la, lo)) return [la, lo];
+  if (noBrasil(lo, la)) return [lo, la, 'invertida'];   // longitude informada antes da latitude
+  return 'fora';
+}
+
+async function buscar() {
+  const t = $('q').value.trim();
+  $('cands').innerHTML = '';
+  if (!t) return msg('Digite coordenadas, um link do Google Maps ou um endereço.', true);
+  let c = coordsDeTexto(t);
+  if (c === 'fora') return msg('Essas coordenadas ficam fora do Brasil. Confira o valor (latitude primeiro, ex.: -23.55, -46.63).', true);
+  if (c && c[2] === 'invertida') {
+    $('q').value = c[0].toFixed(6) + ', ' + c[1].toFixed(6);
+    msg('Latitude e longitude estavam invertidas; corrigido automaticamente.');
+    return definirVeiculo(c[0], c[1], t);
   }
+  if (!c && /^https?:\/\//i.test(t)) {
+    c = coordsDeUrl(t);
+    if (!c) {
+      if (/goo\.gl|share\.google|g\.co\//i.test(t)) return msg('Link curto não pode ser lido aqui: abra o link no navegador e cole a URL completa da barra de endereço (ou as coordenadas).', true);
+      return msg('Não encontrei coordenadas nesse link. Cole a URL completa ou as coordenadas.', true);
+    }
+  }
+  if (c) { msg(''); return definirVeiculo(c[0], c[1], t); }
+  msg('Buscando endereço no OpenStreetMap…');
+  try {
+    const r = await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=br&q=' + encodeURIComponent(t));
+    const j = await r.json();
+    if (!j.length) return msg('Endereço não encontrado. Tente incluir cidade e UF, ou use coordenadas.', true);
+    if (j.length === 1) { msg(''); return definirVeiculo(+j[0].lat, +j[0].lon, j[0].display_name); }
+    msg('Escolha o local correto:');
+    j.forEach(x => {
+      const d = document.createElement('div'); d.textContent = x.display_name;
+      d.onclick = () => { $('cands').innerHTML = ''; msg(''); definirVeiculo(+x.lat, +x.lon, x.display_name); };
+      $('cands').appendChild(d);
+    });
+  } catch (e) { msg('Falha ao consultar o endereço (sem internet?). Use coordenadas.', true); }
 }
-iniciar();
+
+function definirVeiculo(la, lo, rotulo) {
+  veiculo = L.latLng(la, lo);
+  const raio = Math.max(1, +$('raio').value || 50);
+  if (!circulo) {
+    circulo = L.circle(veiculo, { radius: raio * 1000, color: COR_ACAO, weight: 2, opacity: .6, fillColor: COR_ACAO, fillOpacity: .06, interactive: false }).addTo(map);
+  }
+  circulo.setLatLng(veiculo).setRadius(raio * 1000);
+  if (window.vMk) map.removeLayer(window.vMk);
+  window.vMk = L.marker(veiculo, { icon: L.divIcon({ className: '', html: `<div class="veh-ico">${IC_CAMINHAO}</div>`, iconSize: [34, 34], iconAnchor: [17, 17] }), zIndexOffset: 1000 })
+    .bindPopup(`<div class="pop"><h3>Veículo</h3><p class="m">${esc(rotulo || '')}</p><p>${la.toFixed(6)}, ${lo.toFixed(6)}</p></div>`).addTo(map);
+  map.fitBounds(circulo.getBounds(), padMapa());
+  listar();
+  // notebook com tela baixa ou celular: se sobra pouco espaço para a lista, rola o painel até ela
+  const side = $('side');
+  if (side.clientHeight - $('res').offsetTop < 360) side.scrollTop = $('res').offsetTop;
+}
+
+// ---------- lista de resultados ----------
+// Busca (decisão do gestor em 09/10/2026): ignora acento e maiúscula; todas as palavras digitadas precisam aparecer no
+// nome, código, cidade ou endereço. Sem veículo, busca na base toda; com veículo, filtra a lista do raio.
+const semAcento = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const LIMITE_LISTA = 200;
+const MSG_INICIAL = 'Informe a localização do veículo (ou clique no mapa) para listar CDs e fornecedores no raio, ou digite um nome, código ou cidade para buscar na base toda.';
+let ajusteMapa = null;
+function listar() {
+  const f = filtrosAtivos();
+  const palavras = semAcento($('filtroNome').value.trim()).split(/\s+/).filter(Boolean);
+  const casa = x => palavras.every(p => x._b.includes(p));
+  const raio = Math.max(1, +$('raio').value || 50);
+  if (circulo) circulo.setRadius(raio * 1000);
+  let fs, cs, titF, titC, aviso = '';
+  if (!veiculo) {
+    if (!palavras.length) { ultimo = []; $('btnCsv').disabled = true; $('res').innerHTML = `<div class="empty">${MSG_INICIAL}</div>`; return; }
+    // sem veículo: busca na base toda, em ordem de UF, cidade e nome
+    const ordem = (a, b) => (a.x.uf || '').localeCompare(b.x.uf || '') || (a.x.ci || '').localeCompare(b.x.ci || '', 'pt-BR') || (a.x.n || '').localeCompare(b.x.n || '', 'pt-BR');
+    fs = FORN.filter(x => passaForn(x, f) && casa(x)).map(x => ({ x, d: null })).sort(ordem);
+    cs = f.has('CD') ? CDS.filter(casa).map(x => ({ x, d: null })) : [];
+    titF = 'Fornecedores encontrados na base'; titC = 'CDs encontrados';
+    // aproxima o mapa nos encontrados (com pausa, para não pular a cada letra digitada)
+    clearTimeout(ajusteMapa);
+    ajusteMapa = setTimeout(() => { const pts = [...fs, ...cs].map(o => [o.x.la, o.x.lo]); if (pts.length) map.fitBounds(pts, Object.assign({ maxZoom: 14 }, padMapa())); }, 500);
+  } else {
+    const comDist = arr => arr.map(x => ({ x, d: distKm(veiculo.lat, veiculo.lng, x.la, x.lo) })).sort((a, b) => a.d - b.d);
+    const todosF = comDist(FORN.filter(x => passaForn(x, f) && casa(x)));
+    fs = todosF.filter(o => o.d <= raio);
+    titF = 'Fornecedores no raio';
+    if (!fs.length && todosF.length) {
+      // ninguém no raio: com busca digitada mostra todos os que batem; sem busca, os 5 mais próximos
+      fs = palavras.length ? todosF : todosF.slice(0, 5);
+      aviso = palavras.length ? `Nenhum no raio de ${raio} km · encontrados pela busca, do mais perto ao mais longe` : `Nenhum no raio de ${raio} km · 5 mais próximos`;
+    }
+    cs = f.has('CD') ? comDist(CDS.filter(casa)).filter(o => o.d <= raio) : [];
+    titC = 'CDs no raio';
+  }
+  ultimo = [...fs, ...cs];
+  $('btnCsv').disabled = !ultimo.length;
+  const mostrar = fs.slice(0, LIMITE_LISTA);
+  const dist = d => d == null ? '' : fmtKm(d);
+  // um único botão preto por tela: o "Ligar" do fornecedor mais próximo
+  const acoes = (x, i) => `<div class="acts">` +
+    (x.t ? `<a class="act${veiculo && i === 0 ? ' primary' : ''}" href="tel:${esc(x.t.replace(/\D/g, ''))}" onclick="event.stopPropagation()">${IC_TEL} Ligar ${esc(x.t)}</a>` : '<span class="act off">Sem telefone</span>') +
+    (veiculo
+      ? `<a class="act" href="${linkRota(x.la, x.lo)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${IC_ROTA} Rota</a>`
+      : `<a class="act" href="${linkMaps(x.la, x.lo)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Google Maps</a>`) + `</div>`;
+  const itemF = ({ x, d }, i) => `<div class="item" data-k="F${i}">
+      <div class="t"><span>${esc(x.n || x.rz)}</span><span class="d">${dist(d)}</span></div>
+      <div class="m">${veiculo && i === 0 ? '<span class="tag tag-acc">Mais próximo</span>' : ''}${x.ap ? '<span class="tag tag-aviso">Posição aproximada</span>' : ''}${naoAtivo(x) ? `<span class="tag tag-alerta">CNPJ ${esc(x.sc)}</span>` : ''}${esc(x.ts)}</div>
+      <div class="m">${esc(x.ci)}/${esc(x.uf)} · cód. ${esc(x.c)}</div>${acoes(x, i)}</div>`;
+  const itemC = ({ x, d }, i) => `<div class="item" data-k="C${i}">
+      <div class="t"><span>CD ${esc(x.s)} · ${esc(x.n)}</span><span class="d">${dist(d)}</span></div>
+      <div class="m">${esc(x.dm || '')}${x.pf ? ' · restrição: ' + esc(x.pf) : ''}</div></div>`;
+  $('res').innerHTML =
+    (aviso ? `<div class="sec-h fora"><span>${aviso}</span><span>${fs.length}</span></div>` : `<div class="sec-h"><span>${titF}</span><span>${fs.length}</span></div>`) +
+    (mostrar.length ? mostrar.map(itemF).join('') : '<div class="empty">Nenhum fornecedor com os filtros atuais.</div>') +
+    (fs.length > LIMITE_LISTA ? `<div class="empty">Mostrando os primeiros ${LIMITE_LISTA} de ${fs.length}. Refine a busca (ex.: nome + cidade); o botão CSV traz todos.</div>` : '') +
+    (f.has('CD') ? `<div class="sec-h"><span>${titC}</span><span>${cs.length}</span></div>` + (cs.length ? cs.map(itemC).join('') : '<div class="empty">Nenhum CD.</div>') : '');
+  $('res').querySelectorAll('.item').forEach(el => el.onclick = () => {
+    const k = el.dataset.k, o = (k[0] === 'F' ? mostrar : cs)[+k.slice(1)].x;
+    focar(o.la, o.lo, Math.max(map.getZoom(), 14));
+    (o.grp || o.mk).openPopup();
+  });
+}
+
+function baixarCsv() {
+  const cab = ['Tipo', 'Distancia_km', 'Codigo_Sigla', 'Nome', 'TipoServico', 'SituacaoCNPJ', 'Endereco', 'Cidade', 'UF', 'CEP', 'Telefone', 'PosicaoAproximada', 'Lat', 'Lon'];
+  const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const km = d => d == null ? '' : d.toFixed(1).replace('.', ',');
+  const linhas = ultimo.map(({ x, d }) => x.tipo === 'F'
+    ? ['Fornecedor', km(d), x.c, x.n || x.rz, x.ts, x.sc, x.e, x.ci, x.uf, x.cep, x.t, x.ap ? 'Sim' : 'Não', x.la, x.lo]
+    : ['CD', km(d), x.s, x.n, '', '', x.e, '', '', '', '', '', x.la, x.lo]);
+  const csv = '﻿' + [cab, ...linhas].map(l => l.map(q).join(';')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = veiculo ? `fornecedores_raio_${$('raio').value}km.csv` : 'fornecedores_busca.csv';
+  a.click();
+}
+
+// ---------- eventos ----------
+$('btnBuscar').onclick = buscar;
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter') buscar(); });
+$('raio').addEventListener('change', listar);
+$('filtroNome').addEventListener('input', listar);
+$('tipo').addEventListener('change', () => { sincronizarBotoes(); desenharCamadas(); listar(); });
+document.querySelectorAll('#svc button').forEach(b => b.addEventListener('click', () => {
+  const alvo = (b.classList.contains('on') && b.dataset.t) ? '' : b.dataset.t;   // clicar de novo no ativo volta para "Todos"
+  $('tipo').value = alvo;
+  if ($('tipo').value !== alvo) $('tipo').value = '';   // serviço sem nenhum fornecedor com os filtros atuais
+  sincronizarBotoes(); desenharCamadas(); listar();
+}));
+$('btnCsv').onclick = baixarCsv;
+document.querySelectorAll('#filtros input').forEach(i => i.addEventListener('change', () => { desenharCamadas(); listar(); }));
+map.on('click', e => {
+  if (!$('clickSet').checked) return;
+  if (!noBrasil(e.latlng.lat, e.latlng.lng)) return msg('O ponto clicado fica fora do Brasil.', true);
+  msg('');
+  $('q').value = e.latlng.lat.toFixed(6) + ', ' + e.latlng.lng.toFixed(6);
+  definirVeiculo(e.latlng.lat, e.latlng.lng, 'posição clicada no mapa');
+});
+
+// ---------- dados ----------
+// Monta marcadores, busca e filtros. Mapa local: chamada logo abaixo, com os dados embutidos.
+// Site publicado: chamada por entrar.js depois do login, com os dados baixados do SharePoint.
+function iniciarMapa(d) {
+  CDS = d.cds; FORN = d.forn;
+  $('gerado').textContent = d.gerado;
+  FORN.forEach(f => {
+    f.tipo = 'F';
+    f._b = semAcento([f.n, f.c, f.ci, f.uf, f.e].join(' '));
+    f.mk = L.circleMarker([f.la, f.lo], { renderer, radius: 5, weight: 1.5, color: '#fff', fillColor: COR_FORN, fillOpacity: .95 })
+      .bindPopup(() => popForn(f), { maxWidth: 330 });
+  });
+  CDS.forEach(c => {
+    c.tipo = 'C';
+    c._b = semAcento([c.s, c.n, c.e, c.r, c.mi].join(' '));
+    const k = c.la.toFixed(5) + ',' + c.lo.toFixed(5);
+    if (!gruposCd.has(k)) gruposCd.set(k, []);
+    gruposCd.get(k).push(c);
+  });
+  gruposCd.forEach(g => {
+    const ok = g.some(c => c.st === 'OK');
+    const mk = L.marker([g[0].la, g[0].lo], { icon: L.divIcon({ className: '', html: `<div class="cd-ico${ok ? '' : ' aprox'}"></div>`, iconSize: [16, 16], iconAnchor: [8, 8] }), zIndexOffset: 500, title: 'CD ' + g.map(c => c.s).join(', ') })
+      .bindPopup(() => (g.length > 1 ? `<div class="pop m" style="margin-bottom:6px">${g.length} siglas neste endereço</div>` : '') + g.map(popCd).join('<hr>'), { maxWidth: 360, maxHeight: 380 });
+    g.forEach(c => c.mk = mk);
+  });
+  montarTipos();
+  desenharCamadas();
+}
+const DADOS = null;   // mapa local: dados embutidos; site publicado: null
+if (DADOS) iniciarMapa(DADOS);
 </script>
+<script src="vendor/msal-browser.min.js"></script><script src="entrar.js"></script>
 </body>
 </html>

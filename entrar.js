@@ -3,12 +3,13 @@
 // O mapa local, aberto do disco, já vem com os dados embutidos e não usa este arquivo.
 (() => {
   const CFG = {
-    clientId: 'be92c8b6-d0fc-40e3-8e5c-f75de940e41b',   // registro "Mapa de Fornecedores - Manutenção" (IDs públicos, não são senha)
+    clientId: 'be92c8b6-d0fc-40e3-8e5c-f75de940e41b',   // registro do aplicativo no Entra ID (IDs públicos, não são senha)
     tenant: '8babaf2b-248f-4651-98d6-1e5312fbe00a',     // Transmaroni
-    // biblioteca "Documentos" do site ProTech no SharePoint (identificador do Graph; sozinho não dá acesso a nada) e caminho
-    // do arquivo dentro dela. A pasta tem leitura para "Todos, exceto usuários externos"; se for movida ou renomeada, atualizar aqui.
+    // biblioteca e pasta dos dados no SharePoint da empresa (identificadores do Graph; sozinhos não dão acesso a nada).
+    // A pasta tem leitura para "Todos, exceto usuários externos"; se for trocada, atualizar aqui.
     drive: 'b!1UO6Bfm9OECOFE0erz4ab0nAit_YztdPqs3l4w5AiStnlUEYhb5iS4xf4ehIJobi',
-    caminho: ['Departamentos', 'PCM - FleetControl', 'Mapa de Fornecedores', 'mapa_dados.json']   // gravado pelo passo 10
+    pasta: '01OJTVXXO7XQ3XZL45KNCIONVN2GZ4BGMR',   // identificador da pasta: continua valendo se ela for renomeada ou movida
+    arquivo: 'mapa_dados.json'                      // gravado pelo passo 10
   };
   const RAIZ = location.origin + location.pathname.replace(/[^/]*$/, '');
   const ESCOPOS = ['User.Read', 'Files.Read.All'];   // Files.Read.All: só lê o que a própria pessoa já pode abrir no SharePoint
@@ -73,11 +74,10 @@
     }
     return r.json();
   }
-  // endereço de download do arquivo de dados: leitura direta pela biblioteca e pelo caminho, com a permissão da própria
-  // pessoa (Files.Read.All delegada). Funciona também para quem tem acesso só à pasta, e não ao site ProTech inteiro.
+  // endereço de download do arquivo de dados: leitura direta pela pasta (identificador) e pelo nome do arquivo, com a
+  // permissão da própria pessoa (Files.Read.All delegada). Funciona também para quem tem acesso só à pasta.
   async function enderecoDados(tk) {
-    const caminho = CFG.caminho.map(encodeURIComponent).join('/');
-    return (await graph(tk, `/drives/${CFG.drive}/root:/${caminho}`))['@microsoft.graph.downloadUrl'];
+    return (await graph(tk, `/drives/${CFG.drive}/items/${CFG.pasta}:/${encodeURIComponent(CFG.arquivo)}`))['@microsoft.graph.downloadUrl'];
   }
 
   async function iniciar() {

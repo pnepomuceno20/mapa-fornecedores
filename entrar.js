@@ -5,10 +5,10 @@
   const CFG = {
     clientId: 'be92c8b6-d0fc-40e3-8e5c-f75de940e41b',   // registro "Mapa de Fornecedores - Manutenção" (IDs públicos, não são senha)
     tenant: '8babaf2b-248f-4651-98d6-1e5312fbe00a',     // Transmaroni
-    site: 'grupotransmaroni.sharepoint.com:/sites/ProTech',   // SharePoint: ProTech - Manutenção Corporativa
-    lista: '18419567-be85-4b62-8c5f-e1e8482686e2',           // biblioteca "PCM - FleetControl"
-    pasta: 'Mapa de Fornecedores',                           // leitura: "Todos, exceto usuários externos"
-    arquivo: 'mapa_dados.json'                               // gravado pelo passo 10 da atualização
+    // biblioteca "Documentos" do site ProTech no SharePoint (identificador do Graph; sozinho não dá acesso a nada) e caminho
+    // do arquivo dentro dela. A pasta tem leitura para "Todos, exceto usuários externos"; se for movida ou renomeada, atualizar aqui.
+    drive: 'b!1UO6Bfm9OECOFE0erz4ab0nAit_YztdPqs3l4w5AiStnlUEYhb5iS4xf4ehIJobi',
+    caminho: ['Departamentos', 'PCM - FleetControl', 'Mapa de Fornecedores', 'mapa_dados.json']   // gravado pelo passo 10
   };
   const RAIZ = location.origin + location.pathname.replace(/[^/]*$/, '');
   const ESCOPOS = ['User.Read', 'Files.Read.All'];   // Files.Read.All: só lê o que a própria pessoa já pode abrir no SharePoint
@@ -57,33 +57,27 @@
       '<p class="m">Use o mesmo e-mail e senha do Outlook. A senha é digitada na página da Microsoft: este site não a vê nem guarda.</p>');
     document.getElementById('entrar').onclick = () => pca.loginRedirect({ scopes: ESCOPOS });
   }
-  function telaErro(texto) {
-    mostrar(`<div class="aviso">${esc(texto)}</div><button class="btn btn-primary" id="denovo">Tentar de novo</button>`);
+  // o código técnico (ex.: "404 itemNotFound") permite diagnosticar o problema por um print da tela
+  function telaErro(texto, detalhe) {
+    mostrar(`<div class="aviso">${esc(texto)}</div><button class="btn btn-primary" id="denovo">Tentar de novo</button>` +
+      (detalhe ? `<p class="m">Código técnico: ${esc(detalhe)}</p>` : ''));
     document.getElementById('denovo').onclick = () => location.reload();
   }
 
   // ---------- dados no SharePoint (Microsoft Graph) ----------
   async function graph(tk, caminho) {
     const r = await fetch('https://graph.microsoft.com/v1.0' + caminho, { headers: { Authorization: 'Bearer ' + tk } });
-    if (!r.ok) throw Object.assign(new Error('Graph ' + r.status), { status: r.status });
+    if (!r.ok) {
+      const j = await r.json().catch(() => null);
+      throw Object.assign(new Error('Graph ' + r.status), { status: r.status, codigo: j?.error?.code });
+    }
     return r.json();
   }
-  // endereço de download do arquivo de dados. A biblioteca (drive) é procurada uma vez e fica guardada neste navegador;
-  // o arquivo é lido pelo caminho dentro dela, com a permissão da própria pessoa.
+  // endereço de download do arquivo de dados: leitura direta pela biblioteca e pelo caminho, com a permissão da própria
+  // pessoa (Files.Read.All delegada). Funciona também para quem tem acesso só à pasta, e não ao site ProTech inteiro.
   async function enderecoDados(tk) {
-    let drive = null;
-    try { drive = localStorage.getItem('mapaForn.drive'); } catch (e) { }
-    if (!drive) {
-      const site = await graph(tk, `/sites/${CFG.site}?$select=id`);
-      drive = (await graph(tk, `/sites/${site.id}/lists/${CFG.lista}/drive?$select=id`)).id;
-      try { localStorage.setItem('mapaForn.drive', drive); } catch (e) { }
-    }
-    const caminho = [CFG.pasta, CFG.arquivo].map(encodeURIComponent).join('/');
-    try { return (await graph(tk, `/drives/${drive}/root:/${caminho}`))['@microsoft.graph.downloadUrl']; }
-    catch (e) {
-      try { localStorage.removeItem('mapaForn.drive'); } catch (x) { }   // biblioteca mudou: procura de novo na próxima vez
-      throw e;
-    }
+    const caminho = CFG.caminho.map(encodeURIComponent).join('/');
+    return (await graph(tk, `/drives/${CFG.drive}/root:/${caminho}`))['@microsoft.graph.downloadUrl'];
   }
 
   async function iniciar() {
@@ -106,10 +100,11 @@
         if (!resp.ok) throw Object.assign(new Error('download ' + resp.status), { status: resp.status });
         dados = await resp.json();
       } catch (e) {
-        if (e.status === 401 || e.status === 403) return telaErro(ERROS.sem_permissao);
-        if (e.status === 404) return telaErro(ERROS.sem_dados);
-        if (e instanceof TypeError) return telaErro(ERROS.rede);   // sem conexão
-        throw e;
+        const detalhe = [e.status, e.codigo].filter(Boolean).join(' ') || e.name;
+        if (e.status === 401 || e.status === 403) return telaErro(ERROS.sem_permissao, detalhe);
+        if (e.status === 404) return telaErro(ERROS.sem_dados, detalhe);
+        if (e instanceof TypeError) return telaErro(ERROS.rede, detalhe);   // sem conexão
+        return telaErro('Não foi possível carregar os dados do mapa.', detalhe);
       }
       iniciarMapa(dados);
       tela.remove();

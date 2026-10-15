@@ -157,7 +157,7 @@
       <label class="field raio" for="raio"><span class="suf">Raio</span><input id="raio" type="number" min="1" max="1000" value="50"><span class="suf">km</span></label>
       <button id="btnBuscar" class="btn btn-primary">Buscar</button>
     </div>
-    <label class="opcao"><input type="checkbox" id="clickSet" checked> Clique no mapa define o veículo</label>
+    <label class="opcao"><input type="checkbox" id="clickSet" autocomplete="off"> Clique no mapa define o veículo</label>
     <div id="msg"></div>
     <div id="cands"></div>
   </div>
@@ -226,15 +226,16 @@ function focar(la, lo, z) {
 const map = L.map('map', { preferCanvas: true, zoomControl: false }).setView([-15.8, -47.9], desktop() ? 4 : 3);
 compensarPainel();
 L.control.zoom({ position: 'bottomright' }).addTo(map);
-// Fundo: Esri (OpenStreetMap e CARTO bloqueiam páginas abertas direto do disco; Esri funciona sem chave)
+// Fundo: Esri (OpenStreetMap e CARTO bloqueiam páginas abertas direto do disco; Esri funciona sem chave; mantido por
+// decisão do gestor em 15/10/2026, risco aceito em docs/4-seguranca-e-lgpd.md)
 const esri = (servico, rotulo, nativo) => L.tileLayer(`https://server.arcgisonline.com/ArcGIS/rest/services/${servico}/MapServer/tile/{z}/{y}/{x}`,
   { maxZoom: 19, maxNativeZoom: nativo, attribution: `Fundo: Esri ${rotulo} &mdash; Esri, HERE, Garmin, OpenStreetMap e colaboradores` });
+// só Ruas (padrão) e Satélite (decisão do gestor em 15/10/2026: o "Mapa claro" saiu)
 const fundos = {
-  'Mapa claro': L.layerGroup([esri('Canvas/World_Light_Gray_Base', 'Light Gray Canvas', 16), esri('Canvas/World_Light_Gray_Reference', 'Light Gray Canvas', 16)]),
   'Ruas': esri('World_Street_Map', 'World Street Map', 18),
   'Satélite': esri('World_Imagery', 'World Imagery', 19)
 };
-fundos['Mapa claro'].addTo(map);
+fundos['Ruas'].addTo(map);
 L.control.layers(fundos, null, { position: 'topright' }).addTo(map);
 
 const camadaForn = L.layerGroup().addTo(map);
@@ -497,6 +498,9 @@ document.querySelectorAll('#svc button').forEach(b => b.addEventListener('click'
 }));
 $('btnCsv').onclick = baixarCsv;
 document.querySelectorAll('#filtros input').forEach(i => i.addEventListener('change', () => { desenharCamadas(); listar(); }));
+// "Clique no mapa define o veículo" é opcional e começa sempre desmarcado (decisão do gestor em 15/10/2026); o navegador
+// às vezes restaura o estado anterior ao recarregar, por isso também é desmarcado aqui
+$('clickSet').checked = false;
 map.on('click', e => {
   if (!$('clickSet').checked) return;
   if (!noBrasil(e.latlng.lat, e.latlng.lng)) return msg('O ponto clicado fica fora do Brasil.', true);

@@ -145,7 +145,7 @@
 <div id="side">
   <header>
     <h1>Fornecedores próximos ao veículo</h1>
-    <div class="sub">CDs e fornecedores · dados de <span id="gerado">…</span></div>
+    <div class="sub">CDs e fornecedores</div>
   </header>
   <div class="box">
     <label class="lbl" for="q">Onde está o veículo?</label>
@@ -157,7 +157,7 @@
       <label class="field raio" for="raio"><span class="suf">Raio</span><input id="raio" type="number" min="1" max="1000" value="50"><span class="suf">km</span></label>
       <button id="btnBuscar" class="btn btn-primary">Buscar</button>
     </div>
-    <label class="opcao"><input type="checkbox" id="clickSet" autocomplete="off"> Clique no mapa define o veículo</label>
+    <label class="opcao"><input type="checkbox" id="clickSet" autocomplete="off"> Clique no mapa e defina a localização</label>
     <div id="msg"></div>
     <div id="cands"></div>
   </div>
@@ -188,7 +188,7 @@
       <button class="btn btn-subtle" id="btnCsv" disabled title="Baixar a lista atual em CSV">CSV</button>
     </div>
   </div>
-  <div id="res"><div class="empty">Informe a localização do veículo (ou clique no mapa) para listar CDs e fornecedores no raio, ou digite um nome, código ou cidade para buscar na base toda.</div></div>
+  <div id="res"><div class="empty">Informe a localização do veículo (ou use a opção “Clique no mapa e defina a localização”) para listar CDs e fornecedores no raio, ou digite um nome, código ou cidade para buscar na base toda.</div></div>
 </div>
 
 <script>
@@ -408,7 +408,7 @@ function definirVeiculo(la, lo, rotulo) {
 // nome, código, cidade ou endereço. Sem veículo, busca na base toda; com veículo, filtra a lista do raio.
 const semAcento = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const LIMITE_LISTA = 200;
-const MSG_INICIAL = 'Informe a localização do veículo (ou clique no mapa) para listar CDs e fornecedores no raio, ou digite um nome, código ou cidade para buscar na base toda.';
+const MSG_INICIAL = 'Informe a localização do veículo (ou use a opção “Clique no mapa e defina a localização”) para listar CDs e fornecedores no raio, ou digite um nome, código ou cidade para buscar na base toda.';
 let ajusteMapa = null;
 function listar() {
   const f = filtrosAtivos();
@@ -497,7 +497,7 @@ document.querySelectorAll('#svc button').forEach(b => b.addEventListener('click'
 }));
 $('btnCsv').onclick = baixarCsv;
 document.querySelectorAll('#filtros input').forEach(i => i.addEventListener('change', () => { desenharCamadas(); listar(); }));
-// "Clique no mapa define o veículo" é opcional e começa sempre desmarcado (decisão do gestor em 15/10/2026); o navegador
+// "Clique no mapa e defina a localização" é opcional e começa sempre desmarcado (decisão do gestor em 15/10/2026); o navegador
 // às vezes restaura o estado anterior ao recarregar, por isso também é desmarcado aqui
 $('clickSet').checked = false;
 map.on('click', e => {
@@ -513,7 +513,6 @@ map.on('click', e => {
 // Site publicado: chamada por entrar.js depois do login, com os dados baixados do SharePoint.
 function iniciarMapa(d) {
   CDS = d.cds; FORN = d.forn;
-  $('gerado').textContent = d.gerado;
   FORN.forEach(f => {
     f.tipo = 'F';
     f._b = semAcento([f.n, f.c, f.ci, f.uf, f.e].join(' '));

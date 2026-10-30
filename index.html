@@ -2,6 +2,10 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-ER+rezaiPuPqgiyC4wdinBA5hBeNfXTqwruSPHp6j0I=' 'unsafe-hashes' 'sha256-jHF5hTIlMDyGZRAsNK0HO/WFYrwPvI2I1q0o1xKKB6I='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://server.arcgisonline.com; connect-src https://login.microsoftonline.com https://graph.microsoft.com https://*.sharepoint.com https://nominatim.openstreetmap.org; frame-src 'self' https://login.microsoftonline.com; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<!-- Versão publicada: a etapa 4 põe acima o CSP, a lista do que a página pode carregar. Um serviço de fora novo (fundo do
+     mapa, busca de endereço) só funciona no site depois de liberado em 4_gerar_mapa.ps1. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mapa de Fornecedores e CDs</title>
 <!-- Visual inspirado no guia DESIGN.md "Uber" (coleção awesome-design-md, MIT): pílulas, cartões de 16 px, campos cinza,
@@ -544,6 +548,6 @@ function iniciarMapa(d) {
 const DADOS = null;   // mapa local: dados embutidos; site publicado: null
 if (DADOS) iniciarMapa(DADOS);
 </script>
-<script src="vendor/msal-browser.min.js"></script><script src="entrar.js?v=311f7ada"></script>
+<script src="vendor/msal-browser.min.js"></script><script src="entrar.js?v=616026d6"></script>
 </body>
 </html>

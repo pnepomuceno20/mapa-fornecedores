@@ -2,6 +2,10 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
+<!-- CSP (decisão do gestor em 30/10/2026): esta página recebe o código do login, então só roda script do próprio site e
+     não manda o endereço, com o código, a nenhum outro site -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <meta http-equiv="Cache-Control" content="no-store">
@@ -10,13 +14,6 @@
 <body style="margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; font: 15px system-ui, -apple-system, 'Segoe UI', sans-serif; color: #5e6470; background: #f2f4f6;">
 <p id="msg">Entrando…</p>
 <script src="vendor/msal-redirect-bridge.min.js"></script>
-<script>
-// Ponte de login do MSAL 5: recebe a resposta da Microsoft e devolve para a página que pediu o login.
-// Fica neste mesmo site (nunca em CDN), como manda a documentação da Microsoft, porque recebe o código de autorização.
-msalRedirectBridge.broadcastResponseToMainFrame().catch(e => {
-  document.getElementById('msg').textContent = 'Não foi possível concluir o login. Volte à página do mapa e tente de novo.';
-  console.error(e);
-});
-</script>
+<script src="redirect.js"></script>
 </body>
 </html>

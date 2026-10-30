@@ -2,6 +2,15 @@
 // único) e leitura dos dados na pasta do SharePoint, com a permissão da própria pessoa. Nenhum dado fica neste site.
 // O mapa local, aberto do disco, já vem com os dados embutidos e não usa este arquivo.
 (() => {
+  // trava contra moldura (decisão do gestor em 30/10/2026): dentro de um iframe de outra página o mapa não entra nem baixa
+  // os dados, para ninguém cobrir a página com outra e induzir cliques ("clickjacking"). O GitHub Pages não deixa
+  // configurar o cabeçalho X-Frame-Options, e o frame-ancestors do CSP não vale em <meta>.
+  if (window.top !== window.self) {
+    const a = document.createElement('a');
+    a.href = location.href; a.target = '_top'; a.textContent = 'Abrir o Mapa de Fornecedores';
+    document.body.replaceChildren(a);
+    return;
+  }
   const CFG = {
     clientId: 'be92c8b6-d0fc-40e3-8e5c-f75de940e41b',   // registro do aplicativo no Entra ID (IDs públicos, não são senha)
     tenant: '8babaf2b-248f-4651-98d6-1e5312fbe00a',     // Transmaroni

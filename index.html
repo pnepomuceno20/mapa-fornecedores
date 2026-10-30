@@ -206,7 +206,7 @@ const COR_FORN = corCss('--forn'), COR_ACAO = corCss('--accent');   // mesmas co
 const IC_TEL = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25c1.1.37 2.3.57 3.6.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.6a1 1 0 0 1-.25 1z"/></svg>';
 const IC_ROTA = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2 4.5 20.3l.7.7L12 18l6.8 3 .7-.7z"/></svg>';
 // "Reportar erro": Microsoft Forms pré-preenchido com o código do fornecedor (vazio = sem link; configurado em comum.ps1)
-const URL_REPORTAR = "";
+const URL_REPORTAR = "https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=K6-ri48kUUaY1h5TEvvgCs3ZNUEF415BmrD_AMDJ5RFUMVJVRjNFNUU0RDE3OFNMTTdMOFdBTkFGOS4u\u0026r2090934275b241218c9b934ce3090b95=CODIGO";
 const linkReportar = f => URL_REPORTAR
   ? `<a class="act rep" href="${esc(URL_REPORTAR.replace(/=CODIGO(&|$)/, (m, fim) => '=' + encodeURIComponent(f.c) + fim))}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Avisar o PCM sobre erro neste fornecedor">Reportar erro</a>`
   : '';

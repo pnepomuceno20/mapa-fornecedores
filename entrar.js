@@ -18,7 +18,8 @@
     // A pasta tem leitura para "Todos, exceto usuários externos"; se for trocada, atualizar aqui.
     drive: 'b!1UO6Bfm9OECOFE0erz4ab0nAit_YztdPqs3l4w5AiStnlUEYhb5iS4xf4ehIJobi',
     pasta: '01OJTVXXO7XQ3XZL45KNCIONVN2GZ4BGMR',   // identificador da pasta: continua valendo se ela for renomeada ou movida
-    arquivo: 'mapa_dados.json'                      // gravado pelo passo 10
+    arquivo: 'mapa_dados.json',                     // gravado pelo passo 10
+    arquivoGz: 'mapa_dados.json.gz'                 // o mesmo, comprimido (gzip): uns 6 vezes menor para baixar
   };
   const RAIZ = location.origin + location.pathname.replace(/[^/]*$/, '');
   const ESCOPOS = ['User.Read', 'Files.Read.All'];   // Files.Read.All: só lê o que a própria pessoa já pode abrir no SharePoint
@@ -85,8 +86,35 @@
   }
   // endereço de download do arquivo de dados: leitura direta pela pasta (identificador) e pelo nome do arquivo, com a
   // permissão da própria pessoa (Files.Read.All delegada). Funciona também para quem tem acesso só à pasta.
-  async function enderecoDados(tk) {
-    return (await graph(tk, `/drives/${CFG.drive}/items/${CFG.pasta}:/${encodeURIComponent(CFG.arquivo)}`))['@microsoft.graph.downloadUrl'];
+  async function itemDados(tk, nome) {
+    try { return await graph(tk, `/drives/${CFG.drive}/items/${CFG.pasta}:/${encodeURIComponent(nome)}`); }
+    catch (e) { if (e.status === 404) return null; throw e; }
+  }
+  async function baixar(item) {
+    const r = await fetch(item['@microsoft.graph.downloadUrl']);
+    if (!r.ok) throw Object.assign(new Error('download ' + r.status), { status: r.status });
+    return r;
+  }
+  // Dados comprimidos (decisão do gestor em 03/11/2026): com os fornecedores de mercado o arquivo passa de 12 MB; a cópia
+  // em gzip tem uns 2 MB e é aberta aqui mesmo (DecompressionStream). Vale só se não for mais velha que o .json; se faltar
+  // ou der qualquer erro, o mapa usa o .json, como antes.
+  async function lerDados(tk) {
+    const [js, gz] = await Promise.all([itemDados(tk, CFG.arquivo), itemDados(tk, CFG.arquivoGz)]);
+    if (gz && typeof DecompressionStream === 'function' && (!js || gz.lastModifiedDateTime >= js.lastModifiedDateTime)) {
+      try {
+        const b = new Uint8Array(await (await baixar(gz)).arrayBuffer());
+        // gzip começa com 1f 8b; se o caminho já tiver descomprimido, o conteúdo é o próprio JSON
+        const txt = b[0] === 0x1f && b[1] === 0x8b
+          ? await new Response(new Blob([b]).stream().pipeThrough(new DecompressionStream('gzip'))).text()
+          : new TextDecoder().decode(b);
+        return JSON.parse(txt);
+      } catch (e) {
+        if (!js) throw e;
+        console.warn('Dados comprimidos indisponíveis; usando o arquivo normal.', e);
+      }
+    }
+    if (!js) throw Object.assign(new Error('Graph 404'), { status: 404, codigo: 'itemNotFound' });
+    return (await baixar(js)).json();
   }
 
   async function iniciar() {
@@ -105,9 +133,7 @@
       }
       let dados;
       try {
-        const resp = await fetch(await enderecoDados(tk));
-        if (!resp.ok) throw Object.assign(new Error('download ' + resp.status), { status: resp.status });
-        dados = await resp.json();
+        dados = await lerDados(tk);
       } catch (e) {
         const detalhe = [e.status, e.codigo].filter(Boolean).join(' ') || e.name;
         if (e.status === 401 || e.status === 403) return telaErro(ERROS.sem_permissao, detalhe);

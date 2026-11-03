@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-/BjAXhOfp8kAMjfpJMEnoOfenZht4nIgxmFFdxGjmmo=' 'unsafe-hashes' 'sha256-jHF5hTIlMDyGZRAsNK0HO/WFYrwPvI2I1q0o1xKKB6I='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://server.arcgisonline.com; connect-src https://login.microsoftonline.com https://graph.microsoft.com https://*.sharepoint.com https://nominatim.openstreetmap.org; frame-src 'self' https://login.microsoftonline.com; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-nQ7DAkKFmBHWxX07g0slJmUNkvsu70f5LIgVGIfTjlk=' 'unsafe-hashes' 'sha256-jHF5hTIlMDyGZRAsNK0HO/WFYrwPvI2I1q0o1xKKB6I='; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://server.arcgisonline.com; connect-src https://login.microsoftonline.com https://graph.microsoft.com https://*.sharepoint.com https://nominatim.openstreetmap.org; frame-src 'self' https://login.microsoftonline.com; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <!-- Versão publicada: a etapa 4 põe acima o CSP, a lista do que a página pode carregar. Um serviço de fora novo (fundo do
      mapa, busca de endereço) só funciona no site depois de liberado em 4_gerar_mapa.ps1. -->
@@ -80,6 +80,12 @@
   .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--forn); display: inline-block; flex: none; }
   .sq { width: 10px; height: 10px; border: 2px solid var(--cd); background: #fff; display: inline-block; transform: rotate(45deg); flex: none; }
   #filtros label:not(:has(input:checked)) :is(.dot, .sq) { opacity: .4; }
+  /* cadastrado na Maroni (código do sistema) = ponto cheio; sem cadastro = anel (decisão do gestor em 03/11/2026) */
+  .dot.nc { background: #fff; box-shadow: inset 0 0 0 2px var(--forn); }
+  .legenda { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font: 400 12px/16px var(--font); color: var(--body); padding-top: 8px; }
+  .legenda .dot { margin-left: 4px; }
+  .tag-nc { background: #eef0f3; color: #4b5563; }
+  .grp-ico.nc { background: #fff; color: #146c43; border: 2px solid var(--forn); }
   select#tipo { appearance: none; -webkit-appearance: none; width: 100%; height: 40px; border: 0; border-radius: 8px; padding: 0 40px 0 12px;
     font: 500 14px/16px var(--font); color: var(--ink); cursor: pointer;
     background: var(--soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%235e6470' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 14px center; }
@@ -181,6 +187,7 @@
       <label><input type="checkbox" data-f="F" checked><span class="dot"></span> Fornecedores</label>
     </div>
   </div>
+  <div class="box legenda"><span class="dot"></span> Cadastrado Maroni <span class="dot nc"></span> Sem cadastro</div>
   <div class="box">
     <span class="lbl">Serviço</span>
     <div class="pills svc" id="svc">
@@ -209,6 +216,9 @@
 let CDS = [], FORN = [];
 
 const naoAtivo = f => f.sc && f.sc !== 'ATIVA' && !/^NÃO VERIFICADO/.test(f.sc);
+// cadastrado na Maroni = tem o código numérico do sistema; M+CNPJ, C+CNPJ e M-000001 não estão no cadastro
+const cadastrado = f => /^\d+$/.test(f.c);
+const tagCadastro = f => cadastrado(f) ? '<span class="tag tag-ok">Cadastrado</span>' : '<span class="tag tag-nc">Sem cadastro</span>';
 const TXT_APROX = { 'cidade': 'ponto no centro da cidade', 'CEP': 'ponto no centro do CEP','rodovia': 'ponto no trecho da rodovia dentro do município', 'rua do CEP': 'ponto pela rua indicada no CEP' };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmtKm = d => d.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' km';
@@ -273,7 +283,7 @@ function popForn(f) {
   const nome = f.n || f.rz;
   return `<div class="pop"><h3>${esc(nome)}</h3>
     ${f.rz && f.rz !== nome ? `<p class="m">${esc(f.rz)}</p>` : ''}
-    <p class="m">Cód. ${esc(f.c)}</p>
+    <p class="m">${tagCadastro(f)}Cód. ${esc(f.c)}${cadastrado(f) ? '' : ' · Solicitar Cadastro do fornecedor'}</p>
     ${naoAtivo(f) ? `<p><span class="tag tag-alerta">CNPJ ${esc(f.sc)}</span><span class="m">na Receita Federal</span></p>` : ''}
     ${f.ap ? `<p><span class="tag tag-aviso">Posição aproximada</span><span class="m">${esc(TXT_APROX[f.pz] || 'ponto aproximado')}; confirme o endereço por telefone</span></p>` : ''}
     <p><b>Serviço:</b> ${esc(f.ts)}${f.ft && !f.ts.includes(f.ft) ? ` <span class="m">(${esc(f.ft)})</span>` : ''}${f.cn ? `<br><span class="m">CNAE: ${esc(f.cn)}</span>` : ''}</p>
@@ -374,7 +384,7 @@ function desenharCamadas() {
     const sig = g.map(x => x.c).join('|');
     if (mk._sig !== sig) {
       mk._sig = sig;
-      mk.setIcon(L.divIcon({ className: '', html: `<div class="grp-ico" title="${g.length} fornecedores neste ponto">${g.length}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] }));
+      mk.setIcon(L.divIcon({ className: '', html: `<div class="grp-ico${g.some(cadastrado) ? '' : ' nc'}" title="${g.length} fornecedores neste ponto">${g.length}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] }));
       mk.unbindPopup().bindPopup(() => popGrupo(g), { maxWidth: 340, maxHeight: 380 });
     }
     g.forEach(x => x.grp = mk);
@@ -509,7 +519,7 @@ function listar() {
       : `<a class="act" href="${linkMaps(x.la, x.lo)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Google Maps</a>`) + linkReportar(x) + `</div>`;
   const itemF = ({ x, d }, i) => `<div class="item" data-k="F${i}">
       <div class="t"><span>${esc(x.n || x.rz)}</span><span class="d">${dist(d)}</span></div>
-      <div class="m">${veiculo && i === 0 ? '<span class="tag tag-acc">Mais próximo</span>' : ''}${x.ap ? '<span class="tag tag-aviso">Posição aproximada</span>' : ''}${naoAtivo(x) ? `<span class="tag tag-alerta">CNPJ ${esc(x.sc)}</span>` : ''}${esc(x.ts)}</div>
+      <div class="m">${veiculo && i === 0 ? '<span class="tag tag-acc">Mais próximo</span>' : ''}${tagCadastro(x)}${x.ap ? '<span class="tag tag-aviso">Posição aproximada</span>' : ''}${naoAtivo(x) ? `<span class="tag tag-alerta">CNPJ ${esc(x.sc)}</span>` : ''}${esc(x.ts)}</div>
       <div class="m">${esc(x.ci)}/${esc(x.uf)} · cód. ${esc(x.c)}</div>${acoes(x, i)}</div>`;
   const itemC = ({ x, d }, i) => `<div class="item" data-k="C${i}">
       <div class="t"><span>CD ${esc(x.s)} · ${esc(x.n)}</span><span class="d">${dist(d)}</span></div>
@@ -574,7 +584,9 @@ function iniciarMapa(d) {
   FORN.forEach(f => {
     f.tipo = 'F';
     f._b = semAcento([f.n, f.c, f.ci, f.uf, f.e].join(' '));
-    f.mk = L.circleMarker([f.la, f.lo], { renderer, radius: 5, weight: 1.5, color: '#fff', fillColor: COR_FORN, fillOpacity: .95 })
+    f.mk = L.circleMarker([f.la, f.lo], cadastrado(f)
+      ? { renderer, radius: 5, weight: 1.5, color: '#fff', fillColor: COR_FORN, fillOpacity: .95 }
+      : { renderer, radius: 4.5, weight: 2, color: COR_FORN, fillColor: '#fff', fillOpacity: 1 })
       .bindPopup(() => popForn(f), { maxWidth: 330 });
   });
   CDS.forEach(c => {

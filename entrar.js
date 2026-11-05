@@ -16,8 +16,8 @@
     tenant: '8babaf2b-248f-4651-98d6-1e5312fbe00a',     // Transmaroni
     // biblioteca e pasta dos dados no SharePoint da empresa (identificadores do Graph; sozinhos não dão acesso a nada).
     // A pasta tem leitura para "Todos, exceto usuários externos"; se for trocada, atualizar aqui.
-    drive: 'b!1UO6Bfm9OECOFE0erz4ab0nAit_YztdPqs3l4w5AiStnlUEYhb5iS4xf4ehIJobi',
-    pasta: '01OJTVXXO7XQ3XZL45KNCIONVN2GZ4BGMR',   // identificador da pasta: continua valendo se ela for renomeada ou movida
+    drive: 'b!Aze8ECmtmkSONo7jEHZ6-GtMAmSijYJMvjNi4-9e53LMVxOpPZr4TYlGlmf17edT',
+    pasta: '014Y2MABWQGI36RFAB3FC33ISBX75WNI4E',   // identificador da pasta: continua valendo se ela for renomeada ou movida
     arquivo: 'mapa_dados.json',                     // gravado pelo passo 10
     arquivoGz: 'mapa_dados.json.gz'                 // o mesmo, comprimido (gzip): uns 6 vezes menor para baixar
   };
